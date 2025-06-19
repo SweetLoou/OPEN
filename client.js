@@ -1,145 +1,110 @@
-const socket = io('https://plinko-tournament.glitch.me');
+const socket = io();
 
-const nicknameModal = document.getElementById('nickname-modal');
+const loginDiv = document.getElementById('login');
+const gameDiv = document.getElementById('game');
 const nicknameInput = document.getElementById('nickname');
-const joinBtn = document.getElementById('joinBtn');
-const gameEl = document.getElementById('game');
-const statusEl = document.getElementById('status');
-const playersEl = document.getElementById('players');
-const leaderboardEl = document.getElementById('leaderboard');
+const joinButton = document.getElementById('join-game');
+const plinkoBoard = document.getElementById('plinko-board');
+const chipsSpan = document.getElementById('chips');
+const turnSpan = document.getElementById('turn');
 const wagerInput = document.getElementById('wager');
-const wagerBtn = document.getElementById('wagerBtn');
-const plinkoBoardEl = document.getElementById('plinko-board');
+const riskSelect = document.getElementById('risk');
+const wagerButton = document.getElementById('wager-button');
+const newGameButton = document.getElementById('new-game-button');
+const leaderboardList = document.getElementById('leaderboard-list');
 
 let player = null;
-let game = null;
+let gameId = null;
 
-const PLINKO_ROWS = 12;
-const PEG_WIDTH = 50;
-const PEG_HEIGHT = 50;
+function createBoard() {
+    plinkoBoard.innerHTML = '';
+    for (let i = 0; i < PLINKO_ROWS; i++) {
+        const row = document.createElement('div');
+        row.classList.add('row');
+        for (let j = 0; j < i + 1; j++) {
+            const peg = document.createElement('div');
+            peg.classList.add('peg');
+            row.appendChild(peg);
+        }
+        plinkoBoard.appendChild(row);
+    }
 
-joinBtn.addEventListener('click', () => {
-    const nickname = nicknameInput.value.trim();
+    const risk = riskSelect.value;
+    const currentMultipliers = MULTIPLIERS[risk];
+    const bucketRow = document.createElement('div');
+    bucketRow.classList.add('buckets');
+    for (let i = 0; i < currentMultipliers.length; i++) {
+        const bucket = document.createElement('div');
+        bucket.classList.add('bucket');
+        bucket.innerText = currentMultipliers[i];
+        bucketRow.appendChild(bucket);
+    }
+    plinkoBoard.appendChild(bucketRow);
+}
+
+joinButton.addEventListener('click', () => {
+    const nickname = nicknameInput.value;
     if (nickname) {
+        console.log(`Joining game with nickname: ${nickname}`);
         socket.emit('join', { nickname });
-        nicknameModal.style.display = 'none';
-        gameEl.style.display = 'block';
-    } else {
-        alert('Please enter a nickname.');
+    }
+});
+
+wagerButton.addEventListener('click', () => {
+    const wager = parseInt(wagerInput.value);
+    const risk = riskSelect.value;
+    if (wager > 0) {
+        console.log(`Wagering: ${wager} with risk: ${risk}`);
+        socket.emit('wager', { wager, risk });
+    }
+});
+
+newGameButton.addEventListener('click', () => {
+    const nickname = player.nickname;
+    if (nickname) {
+        console.log(`Joining new game with nickname: ${nickname}`);
+        socket.emit('join', { nickname });
+        newGameButton.style.display = 'none';
     }
 });
 
 socket.on('joined', (data) => {
+    console.log('Joined game:', data);
     player = data.player;
-    statusEl.textContent = `Joined game ${data.gameId}. Waiting for opponent...`;
+    gameId = data.gameId;
+    loginDiv.style.display = 'none';
+    gameDiv.style.display = 'block';
+    createBoard();
 });
 
-socket.on('state', (gameState) => {
-    game = gameState;
-    player = game.players[socket.id];
-    updatePlayerList();
-    renderPlinkoBoard();
-
-    if (game.over) {
-        statusEl.textContent = 'Game Over!';
-        wagerBtn.disabled = true;
-    } else if (game.turn === player.id) {
-        statusEl.textContent = 'Your turn. Place your wager.';
-        wagerBtn.disabled = false;
-    } else {
-        statusEl.textContent = `Waiting for ${game.players[game.turn]?.nickname || 'opponent'} to wager.`;
-        wagerBtn.disabled = true;
+socket.on('state', (game) => {
+    console.log('Received game state:', game);
+    const me = game.players[player.id];
+    if (me) {
+        chipsSpan.innerText = me.chips;
     }
-    
-    if (player.lastDrop) {
-        animateDrop(player.lastDrop);
+    turnSpan.innerText = game.players[game.turn].nickname;
+    wagerButton.disabled = game.turn !== player.id;
+});
+
+socket.on('leaderboard', (leaderboard) => {
+    console.log('Received leaderboard:', leaderboard);
+    leaderboardList.innerHTML = '';
+    for (const nickname in leaderboard) {
+        const li = document.createElement('li');
+        li.innerText = `${nickname}: ${leaderboard[nickname]}`;
+        leaderboardList.appendChild(li);
     }
 });
 
 socket.on('gameOver', (data) => {
-    game.over = true;
-    statusEl.textContent = `Game Over! ${data.winner} wins. Reason: ${data.reason}`;
-    wagerBtn.disabled = true;
+    console.log('Game over:', data);
+    alert(`Game over! ${data.winner ? `${data.winner} wins!` : ''} ${data.reason}`);
+    wagerButton.disabled = true;
+    newGameButton.style.display = 'block';
 });
 
 socket.on('error', (data) => {
-    alert(`Error: ${data.message}`);
+    console.error('Received error:', data);
+    alert(data.message);
 });
-
-socket.on('disconnect', () => {
-    statusEl.textContent = 'Disconnected from server. Please refresh.';
-    wagerBtn.disabled = true;
-});
-
-wagerBtn.addEventListener('click', () => {
-    const wager = parseInt(wagerInput.value, 10);
-    if (isNaN(wager) || wager <= 0) {
-        return alert('Please enter a valid wager.');
-    }
-    socket.emit('wager', { wager });
-});
-
-function updatePlayerList() {
-    if (!game) return;
-    playersEl.innerHTML = '<h3>Players</h3>';
-    for (const playerId in game.players) {
-        const p = game.players[playerId];
-        const playerDiv = document.createElement('div');
-        playerDiv.innerHTML = `<b>${p.id === player.id ? p.nickname + ' (You)' : p.nickname}</b>: ${p.chips} chips`;
-        if (p.id === game.turn) {
-            playerDiv.style.fontWeight = 'bold';
-        }
-        playersEl.appendChild(playerDiv);
-    }
-}
-
-function updateLeaderboard(leaderboard) {
-    leaderboardEl.innerHTML = '<h3>Global Leaderboard</h3>';
-    const sortedPlayers = Object.entries(leaderboard).sort(([, a], [, b]) => b - a);
-    for (const [nickname, score] of sortedPlayers) {
-        const playerDiv = document.createElement('div');
-        playerDiv.innerHTML = `<b>${nickname}</b>: ${score} wagered`;
-        leaderboardEl.appendChild(playerDiv);
-    }
-}
-
-socket.on('leaderboard', (leaderboard) => {
-    updateLeaderboard(leaderboard);
-});
-
-function renderPlinkoBoard() {
-    plinkoBoardEl.innerHTML = '';
-    plinkoBoardEl.style.width = `${(PLINKO_ROWS + 1) * PEG_WIDTH}px`;
-    plinkoBoardEl.style.height = `${PLINKO_ROWS * PEG_HEIGHT}px`;
-
-    for (let row = 0; row < PLINKO_ROWS; row++) {
-        for (let col = 0; col < row + 2; col++) {
-            const peg = document.createElement('div');
-            peg.className = 'peg';
-            peg.style.left = `${(col - (row + 1) / 2) * PEG_WIDTH + plinkoBoardEl.clientWidth / 2}px`;
-            peg.style.top = `${row * PEG_HEIGHT}px`;
-            plinkoBoardEl.appendChild(peg);
-        }
-    }
-}
-
-function animateDrop(drop) {
-    const ball = document.createElement('div');
-    ball.className = 'ball';
-    plinkoBoardEl.appendChild(ball);
-
-    let step = 0;
-    function moveBall() {
-        if (step >= drop.path.length) {
-            ball.style.backgroundColor = drop.multiplier > 1 ? 'gold' : 'red';
-            setTimeout(() => plinkoBoardEl.removeChild(ball), 1000);
-            return;
-        }
-        const position = drop.path[step];
-        ball.style.left = `${(position - PLINKO_ROWS / 2) * PEG_WIDTH + plinkoBoardEl.clientWidth / 2}px`;
-        ball.style.top = `${step * PEG_HEIGHT}px`;
-        step++;
-        requestAnimationFrame(moveBall);
-    }
-    moveBall();
-}
