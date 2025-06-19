@@ -1,5 +1,3 @@
-const socket = io();
-
 const loginDiv = document.getElementById('login');
 const gameDiv = document.getElementById('game');
 const nicknameInput = document.getElementById('nickname');
@@ -11,9 +9,11 @@ const wagerInput = document.getElementById('wager');
 const riskSelect = document.getElementById('risk');
 const wagerButton = document.getElementById('wager-button');
 const newGameButton = document.getElementById('new-game-button');
-const leaderboardList = document.getElementById('leaderboard-list');
 
-let player = null;
+let player = {
+    nickname: 'Player',
+    chips: 1000,
+};
 let gameId = null;
 
 function createBoard() {
@@ -45,66 +45,48 @@ function createBoard() {
 joinButton.addEventListener('click', () => {
     const nickname = nicknameInput.value;
     if (nickname) {
-        console.log(`Joining game with nickname: ${nickname}`);
-        socket.emit('join', { nickname });
+        player.nickname = nickname;
+        loginDiv.style.display = 'none';
+        gameDiv.style.display = 'block';
+        chipsSpan.innerText = player.chips;
+        turnSpan.innerText = player.nickname;
+        createBoard();
     }
 });
 
 wagerButton.addEventListener('click', () => {
     const wager = parseInt(wagerInput.value);
     const risk = riskSelect.value;
-    if (wager > 0) {
-        console.log(`Wagering: ${wager} with risk: ${risk}`);
-        socket.emit('wager', { wager, risk });
+    if (wager > 0 && player.chips >= wager) {
+        player.chips -= wager;
+
+        const outcomes = PLINKO_ROWS;
+        let rightMoves = 0;
+        for (let i = 0; i < outcomes; i++) {
+            if (Math.random() < 0.5) {
+                rightMoves++;
+            }
+        }
+
+        const finalPosition = rightMoves;
+        const currentMultipliers = MULTIPLIERS[risk];
+        const multiplier = currentMultipliers[finalPosition];
+        const winnings = wager * multiplier;
+        player.chips += winnings;
+
+        chipsSpan.innerText = player.chips;
+
+        if (player.chips <= 0) {
+            alert('Game over! You ran out of chips.');
+            wagerButton.disabled = true;
+            newGameButton.style.display = 'block';
+        }
     }
 });
 
 newGameButton.addEventListener('click', () => {
-    const nickname = player.nickname;
-    if (nickname) {
-        console.log(`Joining new game with nickname: ${nickname}`);
-        socket.emit('join', { nickname });
-        newGameButton.style.display = 'none';
-    }
-});
-
-socket.on('joined', (data) => {
-    console.log('Joined game:', data);
-    player = data.player;
-    gameId = data.gameId;
-    loginDiv.style.display = 'none';
-    gameDiv.style.display = 'block';
-    createBoard();
-});
-
-socket.on('state', (game) => {
-    console.log('Received game state:', game);
-    const me = game.players[player.id];
-    if (me) {
-        chipsSpan.innerText = me.chips;
-    }
-    turnSpan.innerText = game.players[game.turn].nickname;
-    wagerButton.disabled = game.turn !== player.id;
-});
-
-socket.on('leaderboard', (leaderboard) => {
-    console.log('Received leaderboard:', leaderboard);
-    leaderboardList.innerHTML = '';
-    for (const nickname in leaderboard) {
-        const li = document.createElement('li');
-        li.innerText = `${nickname}: ${leaderboard[nickname]}`;
-        leaderboardList.appendChild(li);
-    }
-});
-
-socket.on('gameOver', (data) => {
-    console.log('Game over:', data);
-    alert(`Game over! ${data.winner ? `${data.winner} wins!` : ''} ${data.reason}`);
-    wagerButton.disabled = true;
-    newGameButton.style.display = 'block';
-});
-
-socket.on('error', (data) => {
-    console.error('Received error:', data);
-    alert(data.message);
+    player.chips = 1000;
+    chipsSpan.innerText = player.chips;
+    wagerButton.disabled = false;
+    newGameButton.style.display = 'none';
 });
