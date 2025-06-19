@@ -1,4 +1,4 @@
-const socket = io();
+const socket = io('https://plinko-tournament.glitch.me');
 
 const nicknameModal = document.getElementById('nickname-modal');
 const nicknameInput = document.getElementById('nickname');
@@ -64,6 +64,11 @@ socket.on('gameOver', (data) => {
 
 socket.on('error', (data) => {
     alert(`Error: ${data.message}`);
+});
+
+socket.on('disconnect', () => {
+    statusEl.textContent = 'Disconnected from server. Please refresh.';
+    wagerBtn.disabled = true;
 });
 
 wagerBtn.addEventListener('click', () => {
