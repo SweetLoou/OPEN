@@ -9,11 +9,10 @@ const wagerInput = document.getElementById('wager');
 const riskSelect = document.getElementById('risk');
 const wagerButton = document.getElementById('wager-button');
 const newGameButton = document.getElementById('new-game-button');
+const messageDiv = document.getElementById('message');
 
-let player = {
-    nickname: 'Player',
-    chips: 1000,
-};
+const socket = io('https://plinko-game-server.glitch.me'); // Replace with your Glitch server URL
+let player = null;
 let gameId = null;
 
 function createBoard() {
@@ -45,12 +44,7 @@ function createBoard() {
 joinButton.addEventListener('click', () => {
     const nickname = nicknameInput.value;
     if (nickname) {
-        player.nickname = nickname;
-        loginDiv.style.display = 'none';
-        gameDiv.style.display = 'block';
-        chipsSpan.innerText = player.chips;
-        turnSpan.innerText = player.nickname;
-        createBoard();
+        socket.emit('join', { nickname });
     }
 });
 
@@ -58,35 +52,45 @@ wagerButton.addEventListener('click', () => {
     const wager = parseInt(wagerInput.value);
     const risk = riskSelect.value;
     if (wager > 0 && player.chips >= wager) {
-        player.chips -= wager;
-
-        const outcomes = PLINKO_ROWS;
-        let rightMoves = 0;
-        for (let i = 0; i < outcomes; i++) {
-            if (Math.random() < 0.5) {
-                rightMoves++;
-            }
-        }
-
-        const finalPosition = rightMoves;
-        const currentMultipliers = MULTIPLIERS[risk];
-        const multiplier = currentMultipliers[finalPosition];
-        const winnings = wager * multiplier;
-        player.chips += winnings;
-
-        chipsSpan.innerText = player.chips;
-
-        if (player.chips <= 0) {
-            alert('Game over! You ran out of chips.');
-            wagerButton.disabled = true;
-            newGameButton.style.display = 'block';
-        }
+        socket.emit('wager', { wager, risk });
     }
 });
 
 newGameButton.addEventListener('click', () => {
-    player.chips = 1000;
-    chipsSpan.innerText = player.chips;
-    wagerButton.disabled = false;
     newGameButton.style.display = 'none';
+    loginDiv.style.display = 'block';
+    gameDiv.style.display = 'none';
+});
+
+socket.on('joined', (data) => {
+    player = data.player;
+    gameId = data.gameId;
+    loginDiv.style.display = 'none';
+    gameDiv.style.display = 'block';
+    chipsSpan.innerText = player.chips;
+    createBoard();
+});
+
+socket.on('state', (game) => {
+    if (game.players[socket.id]) {
+        player = game.players[socket.id];
+        chipsSpan.innerText = player.chips;
+    }
+    const turnPlayer = Object.values(game.players).find(p => p.id === game.turn);
+    turnSpan.innerText = turnPlayer ? turnPlayer.nickname : 'Unknown';
+    wagerButton.disabled = game.turn !== socket.id;
+});
+
+socket.on('message', (data) => {
+    messageDiv.innerText = data.text;
+});
+
+socket.on('gameOver', (data) => {
+    alert(`Game over! ${data.winner ? `${data.winner} wins!` : "It's a draw!"} Reason: ${data.reason}`);
+    wagerButton.disabled = true;
+    newGameButton.style.display = 'block';
+});
+
+socket.on('error', (data) => {
+    alert(data.message);
 });

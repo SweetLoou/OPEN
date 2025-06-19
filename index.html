@@ -17,6 +17,7 @@
                 <p>Your Chips: <span id="chips"></span></p>
                 <button id="new-game-button" style="display: none;">New Game</button>
                 <p>Turn: <span id="turn"></span></p>
+                <div id="message"></div>
                 <input type="number" id="wager" placeholder="Enter your wager">
                 <select id="risk">
                     <option value="low">Low</option>
@@ -27,6 +28,7 @@
             </div>
         </div>
     </div>
+    <script src="/socket.io/socket.io.js"></script>
     <script src="config.js"></script>
     <script src="client.js"></script>
 </body>
